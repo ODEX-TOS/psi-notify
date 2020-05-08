@@ -250,7 +250,7 @@ static int config_update_from_file(Config *c) {
     base_dir = getenv("XDG_CONFIG_DIR");
 
     if (base_dir) {
-        expect(snprintf(config_path, PATH_MAX, "%s/psi-notify", base_dir) > 0);
+        expect(snprintf(config_path, PATH_MAX, "%s/tos/psi-notify", base_dir) > 0);
     } else {
         base_dir = getenv("HOME");
         if (!base_dir) {
@@ -263,7 +263,7 @@ static int config_update_from_file(Config *c) {
             }
         }
 
-        expect(snprintf(config_path, PATH_MAX, "%s/.config/psi-notify",
+        expect(snprintf(config_path, PATH_MAX, "%s/.config/tos/psi-notify",
                         base_dir) > 0);
     }
 
