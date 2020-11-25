@@ -9,41 +9,53 @@
 #include <unistd.h>
 
 #ifdef WANT_SD_NOTIFY
-    #include <systemd/sd-daemon.h>
+#include <systemd/sd-daemon.h>
 #else /* !WANT_SD_NOTIFY */
-    #define sd_notify(reset_env, state)                                        \
-        do {                                                                   \
-        } while (0)
-    #define sd_notifyf(reset_env, fmt, ...)                                    \
-        do {                                                                   \
-        } while (0)
+#define sd_notify(reset_env, state) \
+    do                              \
+    {                               \
+    } while (0)
+#define sd_notifyf(reset_env, fmt, ...) \
+    do                                  \
+    {                                   \
+    } while (0)
 #endif /* WANT_SD_NOTIFY */
 
 #define info(format, ...) printf("INFO: " format, __VA_ARGS__)
 #define warn(format, ...) printf("WARN: " format, __VA_ARGS__)
-#define expect(x)                                                              \
-    do {                                                                       \
-        if (!(x)) {                                                            \
-            fprintf(stderr, "FATAL: !(%s) at %s:%s:%d\n", #x, __FILE__,        \
-                    __func__, __LINE__);                                       \
-            abort();                                                           \
-        }                                                                      \
+#define expect(x)                                                       \
+    do                                                                  \
+    {                                                                   \
+        if (!(x))                                                       \
+        {                                                               \
+            fprintf(stderr, "FATAL: !(%s) at %s:%s:%d\n", #x, __FILE__, \
+                    __func__, __LINE__);                                \
+            abort();                                                    \
+        }                                                               \
     } while (0)
 
-typedef enum ResourceType { RT_CPU, RT_MEMORY, RT_IO } ResourceType;
+typedef enum ResourceType
+{
+    RT_CPU,
+    RT_MEMORY,
+    RT_IO
+} ResourceType;
 
-typedef struct {
+typedef struct
+{
     double some;
     double full;
 } TimeResourcePressure;
 
-typedef struct {
+typedef struct
+{
     TimeResourcePressure ten;
     TimeResourcePressure sixty;
     TimeResourcePressure three_hundred;
 } Pressure;
 
-typedef struct {
+typedef struct
+{
     char *filename;
     char *human_name;
     unsigned int has_full;
@@ -51,7 +63,8 @@ typedef struct {
     Pressure thresholds;
 } Resource;
 
-typedef struct {
+typedef struct
+{
     Resource cpu;
     Resource memory;
     Resource io;
@@ -67,17 +80,20 @@ static NotifyNotification *active_notif[] = {
     [RT_IO] = NULL,
 };
 
-static void request_reload_config(int sig) {
+static void request_reload_config(int sig)
+{
     (void)sig;
     config_reload_pending = 1;
 }
 
-static void request_exit(int sig) {
+static void request_exit(int sig)
+{
     (void)sig;
     run = 0;
 }
 
-static void configure_signal_handlers(void) {
+static void configure_signal_handlers(void)
+{
     const struct sigaction sa_exit = {
         .sa_handler = request_exit,
     };
@@ -90,26 +106,29 @@ static void configure_signal_handlers(void) {
     expect(sigaction(SIGINT, &sa_exit, NULL) >= 0);
 }
 
-static void alert_destroy(NotifyNotification *n) {
+static void alert_destroy(NotifyNotification *n)
+{
     (void)notify_notification_close(n, NULL);
     g_object_unref(G_OBJECT(n));
 }
 
 #define TITLE_MAX 22 /* len(b"High memory pressure!\0") */
 
-static NotifyNotification *alert_user(const char *resource) {
+static NotifyNotification *alert_user(const char *resource)
+{
     char title[TITLE_MAX];
     NotifyNotification *n;
     GError *err = NULL;
 
     expect(notify_is_initted());
 
-    expect(snprintf(title, TITLE_MAX, "High %s pressure!", resource) > 0);
+    expect(snprintf(title, TITLE_MAX, "High %s usage!", resource) > 0);
     n = notify_notification_new(
         title, "Consider reducing demand on this resource.", NULL);
     notify_notification_set_urgency(n, NOTIFY_URGENCY_CRITICAL);
 
-    if (!notify_notification_show(n, &err)) {
+    if (!notify_notification_show(n, &err))
+    {
         warn("Cannot display notification: %s\n", err->message);
         g_error_free(err);
         alert_destroy(n);
@@ -119,10 +138,13 @@ static NotifyNotification *alert_user(const char *resource) {
     return n;
 }
 
-static void alert_destroy_all_active(void) {
+static void alert_destroy_all_active(void)
+{
     size_t i;
-    for (i = 0; i < sizeof(active_notif) / sizeof(active_notif[0]); i++) {
-        if (active_notif[i]) {
+    for (i = 0; i < sizeof(active_notif) / sizeof(active_notif[0]); i++)
+    {
+        if (active_notif[i])
+        {
             NotifyNotification *n = active_notif[i];
             active_notif[i] = NULL;
             alert_destroy(n);
@@ -133,7 +155,8 @@ static void alert_destroy_all_active(void) {
 /* len(b"/sys/fs/cgroup/user.slice/user-2147483647.slice/memory.pressure\0") */
 #define PRESSURE_PATH_MAX 64
 
-static char *get_psi_filename(char *resource) {
+static char *get_psi_filename(char *resource)
+{
     char *path;
 
     path = malloc(PRESSURE_PATH_MAX);
@@ -142,13 +165,15 @@ static char *get_psi_filename(char *resource) {
     expect(snprintf(path, PRESSURE_PATH_MAX,
                     "/sys/fs/cgroup/user.slice/user-%d.slice/%s.pressure",
                     getuid(), resource) > 0);
-    if (access(path, R_OK) == 0) {
+    if (access(path, R_OK) == 0)
+    {
         return path;
     }
 
     expect(snprintf(path, PRESSURE_PATH_MAX, "/proc/pressure/%s", resource) >
            0);
-    if (access(path, R_OK) == 0) {
+    if (access(path, R_OK) == 0)
+    {
         return path;
     }
 
@@ -160,7 +185,8 @@ static char *get_psi_filename(char *resource) {
 
 #define CONFIG_LINE_MAX 256
 
-static void threshold_update(Config *c, const char *line) {
+static void threshold_update(Config *c, const char *line)
+{
     char resource[CONFIG_LINE_MAX], type[CONFIG_LINE_MAX],
         interval[CONFIG_LINE_MAX];
     double threshold;
@@ -169,60 +195,84 @@ static void threshold_update(Config *c, const char *line) {
 
     /* line is clamped to CONFIG_LINE_MAX, so formats cannot be wider */
     if (sscanf(line, "%*s %s %s %s %lf", resource, type, interval,
-               &threshold) != 4) {
+               &threshold) != 4)
+    {
         warn("Invalid threshold, ignoring: %s", line);
         return;
     }
 
-    if (threshold < 0) {
+    if (threshold < 0)
+    {
         warn("Invalid threshold for %s::%s::%s, ignoring: %f\n", resource, type,
              interval, threshold);
         return;
     }
 
-    if (strcmp(resource, "cpu") == 0) {
+    if (strcmp(resource, "cpu") == 0)
+    {
         r = &c->cpu;
-    } else if (strcmp(resource, "memory") == 0) {
+    }
+    else if (strcmp(resource, "memory") == 0)
+    {
         r = &c->memory;
-    } else if (strcmp(resource, "io") == 0) {
+    }
+    else if (strcmp(resource, "io") == 0)
+    {
         r = &c->io;
-    } else {
+    }
+    else
+    {
         warn("Invalid resource in config, ignoring: '%s'\n", resource);
         return;
     }
 
-    if (strcmp(interval, "avg10") == 0) {
+    if (strcmp(interval, "avg10") == 0)
+    {
         t = &r->thresholds.ten;
-    } else if (strcmp(interval, "avg60") == 0) {
+    }
+    else if (strcmp(interval, "avg60") == 0)
+    {
         t = &r->thresholds.sixty;
-    } else if (strcmp(interval, "avg300") == 0) {
+    }
+    else if (strcmp(interval, "avg300") == 0)
+    {
         t = &r->thresholds.three_hundred;
-    } else {
+    }
+    else
+    {
         warn("Invalid interval in config, ignoring: '%s'\n", interval);
         return;
     }
 
-    if (strcmp(type, "some") == 0) {
+    if (strcmp(type, "some") == 0)
+    {
         t->some = threshold;
-    } else if (strcmp(type, "full") == 0) {
-        if (strcmp(resource, "cpu") == 0) {
+    }
+    else if (strcmp(type, "full") == 0)
+    {
+        if (strcmp(resource, "cpu") == 0)
+        {
             warn("Full interval for %s is bogus, ignoring\n", resource);
             return;
         }
         t->full = threshold;
-    } else {
+    }
+    else
+    {
         warn("Invalid type in config, ignoring: '%s'\n", type);
         return;
     }
 }
 
-static int is_blank(const char *s) {
+static int is_blank(const char *s)
+{
     while (isspace((unsigned char)*s))
         s++;
     return *s == '\0';
 }
 
-static void config_reset_user_facing(Config *c) {
+static void config_reset_user_facing(Config *c)
+{
     c->update_interval = 5;
 
     /* -nan */
@@ -233,13 +283,15 @@ static void config_reset_user_facing(Config *c) {
 
 #define WATCHDOG_GRACE_PERIOD_SEC 5
 #define SEC_TO_USEC 1000000
-static void watchdog_update_usec(Config *c) {
+static void watchdog_update_usec(Config *c)
+{
     expect(c->update_interval > 0);
     sd_notifyf(0, "WATCHDOG_USEC=%d",
                (c->update_interval + WATCHDOG_GRACE_PERIOD_SEC) * SEC_TO_USEC);
 }
 
-static int config_update_from_file(Config *c) {
+static int config_update_from_file(Config *c)
+{
     struct passwd *pw = getpwuid(getuid());
     char line[CONFIG_LINE_MAX];
     char config_path[PATH_MAX];
@@ -249,14 +301,21 @@ static int config_update_from_file(Config *c) {
 
     base_dir = getenv("XDG_CONFIG_DIR");
 
-    if (base_dir) {
+    if (base_dir)
+    {
         expect(snprintf(config_path, PATH_MAX, "%s/tos/psi-notify", base_dir) > 0);
-    } else {
+    }
+    else
+    {
         base_dir = getenv("HOME");
-        if (!base_dir) {
-            if (pw) {
+        if (!base_dir)
+        {
+            if (pw)
+            {
                 base_dir = pw->pw_dir;
-            } else {
+            }
+            else
+            {
                 warn("%s\n",
                      "No $XDG_CONFIG_DIR, $HOME, or entry in /etc/passwd?");
                 base_dir = "/";
@@ -269,19 +328,26 @@ static int config_update_from_file(Config *c) {
 
     f = fopen(config_path, "re");
 
-    if (f) {
+    if (f)
+    {
         config_reset_user_facing(c);
-    } else {
-        if (config_reload_pending) {
+    }
+    else
+    {
+        if (config_reload_pending)
+        {
             /* This was from a SIGHUP, so we already have a config. Keep it. */
             warn("Config reload request ignored, cannot open %s: %s\n",
                  config_path, strerror(errno));
             return -errno;
         }
 
-        if (errno == ENOENT) {
+        if (errno == ENOENT)
+        {
             info("No config at %s, using defaults\n", config_path);
-        } else {
+        }
+        else
+        {
             warn("Using default config, cannot open %s: %s\n", config_path,
                  strerror(errno));
         }
@@ -296,20 +362,24 @@ static int config_update_from_file(Config *c) {
         goto out_update_watchdog;
     }
 
-    while (fgets(line, sizeof(line), f)) {
+    while (fgets(line, sizeof(line), f))
+    {
         char lvalue[CONFIG_LINE_MAX];
         unsigned int rvalue;
         size_t len = strlen(line);
 
-        if (is_blank(line)) {
+        if (is_blank(line))
+        {
             continue;
         }
 
-        if (line[0] == '#') {
+        if (line[0] == '#')
+        {
             continue;
         }
 
-        if (len == CONFIG_LINE_MAX - 1 && line[len - 1] != '\n') {
+        if (len == CONFIG_LINE_MAX - 1 && line[len - 1] != '\n')
+        {
             int ch;
             warn("Config line is too long to be valid, ignoring: %s\n", line);
             while ((ch = fgetc(f)) != EOF && ch != '\n')
@@ -317,30 +387,39 @@ static int config_update_from_file(Config *c) {
             continue;
         }
 
-        if (sscanf(line, "%s", lvalue) != 1) {
+        if (sscanf(line, "%s", lvalue) != 1)
+        {
             warn("Invalid config line, ignoring: %s", line);
             continue;
         }
 
-        if (strcmp(lvalue, "threshold") == 0) {
+        if (strcmp(lvalue, "threshold") == 0)
+        {
             threshold_update(c, line);
-        } else if (strcmp(lvalue, "update") == 0) {
-            if (sscanf(line, "%s %u", lvalue, &rvalue) != 2) {
+        }
+        else if (strcmp(lvalue, "update") == 0)
+        {
+            if (sscanf(line, "%s %u", lvalue, &rvalue) != 2)
+            {
                 warn("Invalid config line, ignoring: %s", line);
                 continue;
             }
-            if (rvalue <= 0) {
+            if (rvalue <= 0)
+            {
                 warn("Ignoring <= 0 update interval: %d\n", rvalue);
                 continue;
             }
-            if (rvalue > 1800) {
+            if (rvalue > 1800)
+            {
                 /* WATCHDOG_USEC must still fit in a uint */
                 warn("Clamping update interval to 1800 from %d\n", rvalue);
                 rvalue = 1800;
             }
 
             c->update_interval = rvalue;
-        } else {
+        }
+        else
+        {
             warn("Invalid config line, ignoring: %s", line);
             continue;
         }
@@ -354,7 +433,8 @@ out_update_watchdog:
     return ret;
 }
 
-static void config_init(Config *c) {
+static void config_init(Config *c)
+{
     memset(c, 0, sizeof(Config));
 
     c->cpu.filename = get_psi_filename("cpu");
@@ -381,17 +461,19 @@ static void config_init(Config *c) {
  */
 #define PRESSURE_LINE_LEN 64
 
-#define COMPARE_THRESH(threshold, current)                                     \
+#define COMPARE_THRESH(threshold, current) \
     (threshold >= 0 && current > threshold)
 
-static int pressure_check_single_line(FILE *f, Resource *r) {
+static int pressure_check_single_line(FILE *f, Resource *r)
+{
     char *start;
     char line[PRESSURE_LINE_LEN];
     char type[PRESSURE_LINE_LEN];
     double ten, sixty, three_hundred;
 
     start = fgets(line, sizeof(line), f);
-    if (!start) {
+    if (!start)
+    {
         warn("Premature EOF from %s\n", r->filename);
         return -EINVAL;
     }
@@ -399,16 +481,20 @@ static int pressure_check_single_line(FILE *f, Resource *r) {
     info("Current %s pressures: %s", r->human_name, line);
 
     if (sscanf(line, "%s avg10=%lf avg60=%lf avg300=%lf total=%*s", type, &ten,
-               &sixty, &three_hundred) != 4) {
+               &sixty, &three_hundred) != 4)
+    {
         warn("Can't parse from %s: %s\n", r->filename, line);
         return -EINVAL;
     }
 
-    if (strcmp("some", type) == 0) {
+    if (strcmp("some", type) == 0)
+    {
         return COMPARE_THRESH(r->thresholds.ten.some, ten) ||
                COMPARE_THRESH(r->thresholds.sixty.some, sixty) ||
                COMPARE_THRESH(r->thresholds.three_hundred.some, three_hundred);
-    } else if (strcmp("full", type) == 0) {
+    }
+    else if (strcmp("full", type) == 0)
+    {
         return COMPARE_THRESH(r->thresholds.ten.full, ten) ||
                COMPARE_THRESH(r->thresholds.sixty.full, sixty) ||
                COMPARE_THRESH(r->thresholds.three_hundred.full, three_hundred);
@@ -419,33 +505,39 @@ static int pressure_check_single_line(FILE *f, Resource *r) {
 }
 
 /* >0: above thresholds, 0: within thresholds, <0: error */
-static int pressure_check(Resource *r) {
+static int pressure_check(Resource *r)
+{
     FILE *f;
     int ret = 0;
 
-    if (!r->filename) {
+    if (!r->filename)
+    {
         return 0;
     }
 
     f = fopen(r->filename, "re");
 
-    if (!f) {
+    if (!f)
+    {
         perror(r->filename);
         return -EINVAL;
     }
 
     ret = pressure_check_single_line(f, r);
-    if (ret) {
+    if (ret)
+    {
         goto out_fclose;
     }
 
-    if (!r->has_full) {
+    if (!r->has_full)
+    {
         ret = 0;
         goto out_fclose;
     }
 
     ret = pressure_check_single_line(f, r);
-    if (ret) {
+    if (ret)
+    {
         goto out_fclose;
     }
 
@@ -456,14 +548,16 @@ out_fclose:
     return ret;
 }
 
-#define LOG_ALERT_STATE(r, state)                                              \
-    expect(*r->human_name);                                                    \
-    info("%c%s alert: %s\n", toupper(r->human_name[0]), r->human_name + 1,     \
+#define LOG_ALERT_STATE(r, state)                                          \
+    expect(*r->human_name);                                                \
+    info("%c%s alert: %s\n", toupper(r->human_name[0]), r->human_name + 1, \
          state)
 
 /* 0 means already active, 1 means newly active. */
-static int alert_user_if_new(Resource *r) {
-    if (active_notif[r->type]) {
+static int alert_user_if_new(Resource *r)
+{
+    if (active_notif[r->type])
+    {
         /* We already have an active warning, nothing to do. */
         return 0;
     }
@@ -474,10 +568,12 @@ static int alert_user_if_new(Resource *r) {
 }
 
 /* 0 means already inactive, 1 means newly inactive. */
-static int alert_stop(Resource *r) {
+static int alert_stop(Resource *r)
+{
     NotifyNotification *n = active_notif[r->type];
 
-    if (!n) {
+    if (!n)
+    {
         /* Already inactive, nothing to do. */
         return 0;
     }
@@ -489,10 +585,12 @@ static int alert_stop(Resource *r) {
     return 1;
 }
 
-static void pressure_check_notify_if_new(Resource *r) {
+static void pressure_check_notify_if_new(Resource *r)
+{
     int ret = pressure_check(r);
 
-    switch (ret) {
+    switch (ret)
+    {
     case 0:
         alert_stop(r);
         break;
@@ -507,15 +605,19 @@ static void pressure_check_notify_if_new(Resource *r) {
 
 #define SEC_TO_NSEC 1000000000
 
-static void suspend_for_remaining_interval(Config *c, struct timespec *in) {
+static void suspend_for_remaining_interval(Config *c, struct timespec *in)
+{
     struct timespec out, remaining;
 
     expect(clock_gettime(CLOCK_MONOTONIC, &out) == 0);
 
-    if (out.tv_nsec - in->tv_nsec < 0) {
+    if (out.tv_nsec - in->tv_nsec < 0)
+    {
         remaining.tv_sec = out.tv_sec - in->tv_sec - 1;
         remaining.tv_nsec = out.tv_nsec - in->tv_nsec + SEC_TO_NSEC;
-    } else {
+    }
+    else
+    {
         remaining.tv_sec = out.tv_sec - in->tv_sec;
         remaining.tv_nsec = out.tv_nsec - in->tv_nsec;
     }
@@ -523,12 +625,14 @@ static void suspend_for_remaining_interval(Config *c, struct timespec *in) {
     remaining.tv_sec = (c->update_interval - remaining.tv_sec - 1);
     remaining.tv_nsec = (SEC_TO_NSEC - remaining.tv_nsec);
 
-    if (remaining.tv_nsec == SEC_TO_NSEC) {
+    if (remaining.tv_nsec == SEC_TO_NSEC)
+    {
         remaining.tv_sec += 1;
         remaining.tv_nsec = 0;
     }
 
-    if (remaining.tv_sec >= c->update_interval) {
+    if (remaining.tv_sec >= c->update_interval)
+    {
         warn("Timer elapsed %d seconds before we completed one event loop\n",
              c->update_interval);
         return;
@@ -537,12 +641,14 @@ static void suspend_for_remaining_interval(Config *c, struct timespec *in) {
     expect(nanosleep(&remaining, NULL) == 0 || errno == EINTR);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     Config config;
 
     (void)argv;
 
-    if (argc != 1) {
+    if (argc != 1)
+    {
         warn("%s doesn't accept any arguments.\n", argv[0]);
         return 1;
     }
@@ -550,7 +656,7 @@ int main(int argc, char *argv[]) {
     expect(setvbuf(stdout, NULL, _IONBF, 0) == 0);
     config_init(&config);
     configure_signal_handlers();
-    expect(notify_init("psi-notify"));
+    expect(notify_init("TDE resource monitor"));
 
     /*
      * TODO: If discussion on unprivileged PSI poll() support upstream ends up
@@ -558,7 +664,8 @@ int main(int argc, char *argv[]) {
      *
      * https://lore.kernel.org/lkml/20200424153859.GA1481119@chrisdown.name/
      */
-    while (run) {
+    while (run)
+    {
         struct timespec in;
 
         expect(clock_gettime(CLOCK_MONOTONIC, &in) == 0);
@@ -569,13 +676,17 @@ int main(int argc, char *argv[]) {
         pressure_check_notify_if_new(&config.memory);
         pressure_check_notify_if_new(&config.io);
 
-        if (config_reload_pending) {
+        if (config_reload_pending)
+        {
             sd_notify(0, "RELOADING=1\nSTATUS=Reloading config...");
-            if (config_update_from_file(&config) == 0) {
+            if (config_update_from_file(&config) == 0)
+            {
                 printf("Config reloaded.\n");
             }
             config_reload_pending = 0;
-        } else if (run) {
+        }
+        else if (run)
+        {
             sd_notify(0, "STATUS=Waiting for next interval.");
             suspend_for_remaining_interval(&config, &in);
         }
